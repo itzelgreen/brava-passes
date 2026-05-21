@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brava — Pass Verification</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Mono:wght@400;500&family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --gold: #C8A84B; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #060606; font-family: "Montserrat", sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; position: relative; overflow: hidden; }
+
+  .bg-glow { position: fixed; inset: 0; pointer-events: none; z-index: 0; transition: background 1s ease; }
+  body.valid    .bg-glow { background: radial-gradient(ellipse at 50% 60%, rgba(30,180,80,0.13) 0%, transparent 70%); }
+  body.redeemed .bg-glow { background: radial-gradient(ellipse at 50% 60%, rgba(200,50,50,0.13) 0%, transparent 70%); }
+  body.loading  .bg-glow { background: radial-gradient(ellipse at 50% 60%, rgba(200,168,75,0.07) 0%, transparent 70%); }
+
+  .card { position: relative; z-index: 1; width: 100%; max-width: 360px; background: #141414; border-radius: 24px; overflow: hidden; box-shadow: 0 32px 80px rgba(0,0,0,0.7); }
+
+  .card-shimmer { height: 2px; background: linear-gradient(90deg, transparent, var(--gold), transparent); transition: background 0.8s; }
+  body.valid    .card-shimmer { background: linear-gradient(90deg, transparent, #2ecc71, transparent); }
+  body.redeemed .card-shimmer { background: linear-gradient(90deg, transparent, #e74c3c, transparent); }
+
+  .card-top { padding: 28px 28px 20px; text-align: center; border-bottom: 1px solid #1e1e1e; }
+  .card-top .logo-text { font-family: "Playfair Display", serif; font-size: 22px; color: var(--gold); letter-spacing: 4px; text-transform: uppercase; }
+
+  .status-area { padding: 40px 28px 28px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+
+  .icon-ring { width: 100px; height: 100px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.6s ease; }
+  body.loading  .icon-ring { border: 2px solid #2a2a2a; animation: spin 1.5s linear infinite; }
+  body.valid    .icon-ring { background: rgba(46,204,113,0.1); border: 2px solid rgba(46,204,113,0.4); animation: pulse-green 2s infinite; }
+  body.redeemed .icon-ring { background: rgba(231,76,60,0.1); border: 2px solid rgba(231,76,60,0.4); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse-green { 0%,100% { box-shadow: 0 0 0 0 rgba(46,204,113,0.3); } 50% { box-shadow: 0 0 0 16px rgba(46,204,113,0); } }
+
+  .icon-emoji { font-size: 44px; line-height: 1; }
+  .status-text { text-align: center; }
+  .status-label { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 6px; transition: color 0.4s; }
+  body.loading  .status-label { color: #555; }
+  body.valid    .status-label { color: #2ecc71; }
+  body.redeemed .status-label { color: #e74c3c; }
+  .status-headline { font-family: "Playfair Display", serif; font-size: 26px; color: #fff; line-height: 1.1; }
+  .status-sub { font-size: 12px; color: #666; margin-top: 6px; line-height: 1.5; }
+
+  .guest-card { margin: 0 20px 20px; background: #0e0e0e; border: 1px solid #1e1e1e; border-radius: 14px; padding: 18px 20px; display: none; flex-direction: column; gap: 12px; animation: fadeUp 0.5s ease forwards; }
+  body.valid .guest-card, body.redeemed .guest-card { display: flex; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  .guest-row { display: flex; justify-content: space-between; align-items: center; }
+  .guest-key { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: #444; }
+  .guest-val { font-size: 13px; font-weight: 600; color: #ddd; text-align: right; }
+  .guest-val.code { font-family: "DM Mono", monospace; font-size: 12px; color: var(--gold); letter-spacing: 1px; }
+  .divider { height: 1px; background: #1e1e1e; }
+
+  .perks { margin: 0 20px 24px; display: none; flex-direction: column; gap: 8px; animation: fadeUp 0.6s 0.1s ease forwards; opacity: 0; }
+  body.valid .perks { display: flex; }
+  .perk-chip { display: flex; align-items: center; gap: 10px; background: rgba(46,204,113,0.06); border: 1px solid rgba(46,204,113,0.15); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #aaa; }
+  .perk-chip span { font-size: 16px; }
+
+  .card-footer { padding: 16px 28px 24px; text-align: center; border-top: 1px solid #1a1a1a; }
+  .footer-text { font-size: 10px; color: #333; letter-spacing: 1px; text-transform: uppercase; }
+</style>
+</head>
+<body class="loading">
+<div class="bg-glow"></div>
+<div class="card">
+  <div class="card-shimmer"></div>
+  <div class="card-top"><div class="logo-text">Brava</div></div>
+
+  <div class="status-area">
+    <div class="icon-ring"><div class="icon-emoji" id="statusIcon">⏳</div></div>
+    <div class="status-text">
+      <div class="status-label" id="statusLabel">Verifying</div>
+      <div class="status-headline" id="statusHeadline">Checking Pass…</div>
+      <div class="status-sub" id="statusSub">Please wait</div>
+    </div>
+  </div>
+
+  <div class="guest-card" id="guestCard">
+    <div class="guest-row"><span class="guest-key">Guest</span><span class="guest-val" id="guestName">—</span></div>
+    <div class="divider"></div>
+    <div class="guest-row"><span class="guest-key">Code</span><span class="guest-val code" id="guestCode">—</span></div>
+    <div class="divider"></div>
+    <div class="guest-row"><span class="guest-key">Valid</span><span class="guest-val" id="guestMonth">—</span></div>
+    <div class="guest-row" id="redeemedRow" style="display:none">
+      <span class="guest-key">Used at</span>
+      <span class="guest-val" id="redeemedAt" style="color:#e74c3c">—</span>
+    </div>
+  </div>
+
+  <div class="perks" id="perksArea">
+    <div class="perk-chip"><span>🎟️</span> Free entry for you + 1 guest</div>
+    <div class="perk-chip"><span>🥂</span> 2 drink tickets to split however you like</div>
+  </div>
+
+  <div class="card-footer"><div class="footer-text">Brava Puerto Rico · Birthday Verification</div></div>
+</div>
+
+<script>
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwpRC8_l3SeSR_-sO1Z-_BwsavOt6KMGn6Ul7r5Y8gCs_NwEPf6YF9yDBtKo0wsYA0I/exec";
+
+  function getParam(name) { return new URLSearchParams(window.location.search).get(name); }
+
+  function showValid(pass) {
+    document.body.className = "valid";
+    document.getElementById("statusIcon").textContent = "✅";
+    document.getElementById("statusLabel").textContent = "Valid Pass";
+    document.getElementById("statusHeadline").textContent = "Welcome In!";
+    document.getElementById("statusSub").textContent = "Match name to ID";
+    document.getElementById("guestName").textContent = pass.name;
+    document.getElementById("guestCode").textContent = pass.code;
+    document.getElementById("guestMonth").textContent = pass.month;
+    document.getElementById("redeemedRow").style.display = "none";
+  }
+
+  function showRedeemed(pass) {
+    document.body.className = "redeemed";
+    document.getElementById("statusIcon").textContent = "🚫";
+    document.getElementById("statusLabel").textContent = "Already Used";
+    document.getElementById("statusHeadline").textContent = "Pass Redeemed";
+    document.getElementById("statusSub").textContent = "This pass has already been used";
+    document.getElementById("guestName").textContent = pass.name;
+    document.getElementById("guestCode").textContent = pass.code;
+    document.getElementById("guestMonth").textContent = pass.month;
+    document.getElementById("redeemedRow").style.display = "flex";
+    document.getElementById("redeemedAt").textContent = pass.redeemedAt || "—";
+  }
+
+  function showError(msg) {
+    document.body.className = "redeemed";
+    document.getElementById("statusIcon").textContent = "❌";
+    document.getElementById("statusLabel").textContent = "Invalid";
+    document.getElementById("statusHeadline").textContent = "Pass Not Found";
+    document.getElementById("statusSub").textContent = msg || "This code does not exist";
+  }
+
+  async function init() {
+    const code = getParam("code");
+    if (!code) { showError("No code in URL"); return; }
+
+    try {
+      const data = await new Promise((resolve, reject) => {
+        const cb = "cb_" + Math.random().toString(36).slice(2);
+        const script = document.createElement("script");
+        window[cb] = (result) => { delete window[cb]; document.body.removeChild(script); resolve(result); };
+        script.onerror = () => { delete window[cb]; document.body.removeChild(script); reject(new Error("Load error")); };
+        script.src = `${SCRIPT_URL}?action=get&code=${encodeURIComponent(code)}&callback=${cb}`;
+        document.body.appendChild(script);
+      });
+      if (!data.found) { showError("Code not found"); return; }
+      if (data.redeemed) { showRedeemed(data); }
+      else { showValid(data); }
+    } catch(e) {
+      showError("Connection error — try again");
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
